@@ -1,0 +1,5 @@
+bin/
+obj/
+valheim-dedi-1.0.12/
+*.zip
+src/Environment.props
