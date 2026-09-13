@@ -51,7 +51,17 @@ namespace Valheim_Serverside.Features
 				(typeof(CookingStation), "SpawnItem"),
 				(typeof(Piece), "CheckClusteredBuildPieceStats"),
 				(typeof(PrivateArea), "HaveLocalAccess"),
+				// m_localPlayer.transform.position, unguarded, in a distance check for a local-only
+				// effect. Most other users of that shape test m_localPlayer for null first; these two
+				// RPC handlers do not, and the server runs them once it owns the object.
+				(typeof(Leviathan), "RPC_Left"),
+				(typeof(MusicVolume), "RPC_PlayMusic"),
 			};
+
+			// Where the game asks "how far is the local player", this answer makes every
+			// distance check fail on a server, which is the right outcome: no local player, no
+			// local effect. Large and finite rather than infinity so no arithmetic produces NaN.
+			static readonly UnityEngine.Vector3 farAway = new UnityEngine.Vector3(1e9f, 1e9f, 1e9f);
 
 			// callee name -> null-safe replacement on this class
 			static readonly Dictionary<string, string> safeCalls = new Dictionary<string, string>
@@ -93,13 +103,33 @@ namespace Valheim_Serverside.Features
 				return localPlayer ? localPlayer.GetPlayerName() : "";
 			}
 
+			public static UnityEngine.Vector3 LocalPlayerPosition()
+			{
+				Player localPlayer = Player.m_localPlayer;
+				return localPlayer ? localPlayer.transform.position : farAway;
+			}
+
 			static IEnumerable<CodeInstruction> Transpiler(IEnumerable<CodeInstruction> instructions, MethodBase original)
 			{
 				FieldInfo localPlayer = AccessTools.Field(typeof(Player), nameof(Player.m_localPlayer));
+				MethodInfo getTransform = AccessTools.PropertyGetter(typeof(UnityEngine.Component), nameof(UnityEngine.Component.transform));
+				MethodInfo getPosition = AccessTools.PropertyGetter(typeof(UnityEngine.Transform), nameof(UnityEngine.Transform.position));
+				MethodInfo positionHelper = AccessTools.Method(typeof(NullLocalPlayer_Patch), nameof(LocalPlayerPosition));
 				List<CodeInstruction> code = instructions.ToList();
 				int replaced = 0;
 				for (int i = 0; i < code.Count; i++)
 				{
+					// Player.m_localPlayer.transform.position -> LocalPlayerPosition()
+					if (i + 2 < code.Count
+						&& code[i].LoadsField(localPlayer)
+						&& code[i + 1].Calls(getTransform)
+						&& code[i + 2].Calls(getPosition))
+					{
+						yield return new CodeInstruction(OpCodes.Call, positionHelper).WithLabels(code[i].labels);
+						i += 2;
+						replaced++;
+						continue;
+					}
 					if (i + 1 < code.Count
 						&& code[i].LoadsField(localPlayer)
 						&& (code[i + 1].opcode == OpCodes.Callvirt || code[i + 1].opcode == OpCodes.Call)
