@@ -1,0 +1,6 @@
+type: change
+section: null
+issues: {}
+feature_flags: []
+description: |-
+  Renamed to Dedicated Simulation. The plugin GUID is now `liekos47.DedicatedSimulation` and the DLL is `DedicatedSimulation.dll`; remove the old `Serverside_Simulations.dll` and carry settings over to the new config file.

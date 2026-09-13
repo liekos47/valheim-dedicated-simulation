@@ -1,4 +1,9 @@
-bin/
+# Build output. bin/ at the root also holds tracked build scripts, so ignore
+# only the output directories inside it.
+/bin/Debug/
+/bin/Release/
+/bin/post_build.bat
+src/*/bin/
 obj/
 valheim-dedi-1.0.12/
 *.zip

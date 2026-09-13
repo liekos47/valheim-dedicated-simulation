@@ -35,8 +35,8 @@ jobs:
     - name: upload
       uses: actions/upload-artifact@v4.6.2
       with:
-        name: serverside-simulations-${{ github.sha }}
-        path: bin\Release\Serverside_Simulations.dll
+        name: dedicated-simulation-${{ github.sha }}
+        path: bin\Release\DedicatedSimulation.dll
   
   thunderstore-package:
     runs-on: ubuntu-latest

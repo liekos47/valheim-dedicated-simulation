@@ -1,15 +1,15 @@
 
-[b][size=7]Valheim Serverside Simulations[/size][/b]
+[b][size=7]Dedicated Simulation[/size][/b]
 
-Note: As of 2026, this project is no longer maintained. If you release your own version of this mod, we kindly request that you use a different name for it.
+Dedicated Simulation continues [url=https://github.com/ddormer/valheim-serverside]Serverside Simulations[/url] by ddormer and contributors, which is no longer maintained, and is updated for current versions of Valheim.
 
-[url=https://github.com/ddormer/valheim-serverside/actions/workflows/build-plugin.yml][img alt="Build Plugin"]https://github.com/ddormer/valheim-serverside/actions/workflows/build-plugin.yml/badge.svg[/img][/url]
+[b]Why the new name?[/b] The owner of the original repository asked that anyone releasing their own version of the mod use a different name. As requested, this version has been renamed from Serverside Simulations to Dedicated Simulation. It is not affiliated with or endorsed by the original authors, and any issues should be reported [url=https://github.com/liekos47/valheim-dedicated-simulation/issues]here[/url], not on the original repository.
 
-[img alt="banner"]https://raw.githubusercontent.com/ddormer/valheim-serverside/refs/heads/main/ss-gh.png[/img]
+[url=https://github.com/liekos47/valheim-dedicated-simulation/actions/workflows/build-plugin.yml][img alt="Build Plugin"]https://github.com/liekos47/valheim-dedicated-simulation/actions/workflows/build-plugin.yml/badge.svg[/img][/url]
 
 Run world and monster simulations on a [b]dedicated server[/b].
 
-Updated for patch: 0.220.5
+Updated for patch: 1.0.12
 
 [b][size=5]Features[/size][/b]
 
@@ -23,11 +23,13 @@ Updated for patch: 0.220.5
 
 [list=1]
 [*]Install BepInEx (optionally installing &quot;Better Networking&quot; on both clients and the server is recommended)
-[*]Copy plugin DLL into the BepInEx/plugins/ directory on your dedicated server.
+[*]Copy [font=monospace]DedicatedSimulation.dll[/font] into the BepInEx/plugins/ directory on your dedicated server.
 [*]You&#39;re done! No client-side changes are needed.
 [/list]
 
-[i]It&#39;s recommended to also install the mod &quot;BetterNetworking&quot;, it works very well with Serverside Simulations.[/i]
+Upgrading from Serverside Simulations: delete [font=monospace]Serverside_Simulations.dll[/font] from BepInEx/plugins/ first, so the two don&#39;t load together. Settings are now read from [font=monospace]BepInEx/config/liekos47.DedicatedSimulation.cfg[/font]; copy any values you changed over from [font=monospace]MVP.Valheim_Serverside_Simulations.cfg[/font].
+
+[i]It&#39;s recommended to also install the mod &quot;BetterNetworking&quot;, it works very well with Dedicated Simulation.[/i]
 
 [b][size=5]Configuration[/size][/b]
 
@@ -53,9 +55,9 @@ Ordinarily, to keep server resource usage low, the Valheim server will hand off 
 
 This dedicated server mod causes terrain, monsters and other objects that are normally created and owned by clients to instead be created on—and thus owned and simulated by—the server.
 
-[b][size=4]For mod developers - compatibility with Serverside Simulations[/size][/b]
+[b][size=4]For mod developers - compatibility with Dedicated Simulation[/size][/b]
 
-For mod developers interested in maintaining compatibility with Serverside Simulations:
+For mod developers interested in maintaining compatibility with Dedicated Simulation:
 
 [list]
 [*]If your mod makes changes relating to simulation / behaviour of the world, it will need to be able run on the dedicated server and should take these points into account:

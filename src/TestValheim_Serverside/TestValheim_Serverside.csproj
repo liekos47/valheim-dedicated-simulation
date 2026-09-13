@@ -14,7 +14,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Valheim_Serverside\Serverside_Simulations.csproj" />
+    <ProjectReference Include="..\Valheim_Serverside\DedicatedSimulation.csproj" />
   </ItemGroup>
 
   <Import Project="../Environment.props" Condition="Exists('../Environment.props')" />

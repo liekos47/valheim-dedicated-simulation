@@ -10,7 +10,7 @@ namespace Valheim_Serverside
 {
 
 	[Harmony]
-	[BepInPlugin("MVP.Valheim_Serverside_Simulations", "Serverside Simulations", "1.1.9")]
+	[BepInPlugin(PluginGuid, "Dedicated Simulation", "1.1.9")]
 	[BepInDependency(ValheimPlusPluginId, BepInDependency.DependencyFlags.SoftDependency)]
 
 	public class ServersidePlugin : BaseUnityPlugin
@@ -21,6 +21,8 @@ namespace Valheim_Serverside
 		public static Configuration configuration;
 
 		public static Harmony harmony;
+
+		public const string PluginGuid = "liekos47.DedicatedSimulation";
 
 		public const string ValheimPlusPluginId = "org.bepinex.plugins.valheim_plus";
 
@@ -35,17 +37,17 @@ namespace Valheim_Serverside
 
 			if (!ModIsEnabled())
 			{
-				Logger.LogInfo("Serverside Simulations is disabled. (configuration)");
+				Logger.LogInfo("Dedicated Simulation is disabled. (configuration)");
 				return;
 			}
 			else if (!IsDedicated())
 			{
-				Logger.LogInfo("Serverside Simulations is disabled. (not a dedicated server)");
+				Logger.LogInfo("Dedicated Simulation is disabled. (not a dedicated server)");
 				return;
 			}
-			Logger.LogInfo("Installing Serverside Simulations");
+			Logger.LogInfo("Installing Dedicated Simulation");
 
-			harmony = new Harmony("MVP.Valheim_Serverside_Simulations");
+			harmony = new Harmony(PluginGuid);
 
 			AvailableFeatures availableFeatures = new AvailableFeatures();
 			availableFeatures.AddFeature(new Features.Core());
@@ -62,7 +64,7 @@ namespace Valheim_Serverside
 
 			new HarmonyFeaturesPatcher(patchRequirements).PatchAll(availableFeatures.GetAllNestedTypes(), harmony);
 
-			Logger.LogInfo("Serverside Simulations installed");
+			Logger.LogInfo("Dedicated Simulation installed");
 		}
 
 		public bool ModIsEnabled()
