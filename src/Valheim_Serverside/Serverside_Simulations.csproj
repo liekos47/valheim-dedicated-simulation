@@ -98,6 +98,7 @@
     <Compile Include="Features\DedicatedServerFixes.cs" />
     <Compile Include="Features\ServerSimulationDistance.cs" />
     <Compile Include="Features\Profiler.cs" />
+    <Compile Include="Features\RpcDiagnostics.cs" />
     <Compile Include="Utils.cs" />
     <Compile Include="Patching.cs" />
     <Compile Include="Features\MaxObjectsPerFrame.cs" />
