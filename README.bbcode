@@ -33,8 +33,56 @@ Upgrading from Serverside Simulations: delete [font=monospace]Serverside_Simulat
 
 [b][size=5]Configuration[/size][/b]
 
+Settings are in [font=monospace]BepInEx/config/liekos47.DedicatedSimulation.cfg[/font].
+
+| Setting | Default | What it does |
+|---|---|---|
+| [font=monospace]MaxObjectsPerFrame.MaxObjects[/font] | 100 | Objects the server may create per frame. Higher loads areas faster, at the cost of CPU. |
+| [font=monospace]ServerSimulationDistance.Level[/font] | 0 | Simulation distance the server uses around each player, and the cap for joining clients. 0 = classic (3x3 zones simulated, 5x5 loaded), the distance this mod is designed for. 1-5 are larger and cost much more CPU. -1 leaves the server&#39;s own value. |
+| [font=monospace]Performance.CreateDestroyIntervalMs[/font] | 0 | Minimum time between runs of the per-player object create/destroy sweep. 0 = every frame. A small value (50-100) spreads server load; clients are unaffected. |
+| [font=monospace]Performance.SkipDistantObjects[/font] | false | Don&#39;t create far-ring objects on the server, which only needs the near ring it simulates. Experimental. |
+| [font=monospace]Profiler.Enabled[/font] / [font=monospace]IntervalSeconds[/font] | false / 60 | Logs how the server&#39;s main-thread time is split (zone loading, object sweep, ZDO sync, AI, character updates). Small overhead while on. |
+
+[b][size=5]Performance[/size][/b]
+
+Measured on 2026-09-13 on a live server: Valheim l-1.0.12, BepInExPack 5.4.2333 with Better Networking, Linux in Docker, Intel i7-9700 (4.3-4.5 GHz), 3-8 players. These are development builds of this version, so treat the numbers as a guide for similar hardware.
+
+Valheim runs the simulation on a single main thread, so that thread is the limit. Load on it, as % of one core:
+
+| Build | 3 players | 4 players | 5 players | 6 players | 7 players |
+|---|---|---|---|---|---|
+| Server simulation distance unset (0x0) | 60-70 | 89, pinned | - | - | - |
+| Classic simulation distance | 45 | 51-54 | 73, pinned in fights | 73-75 | 75 |
+| Optimised (current) | 45 | 50 | 53 | 63-84 (dungeons) | 69-86 |
+| Better Networking only, no Dedicated Simulation | - | 26-31 | - | 25 | 29 (8 players) |
+
+Frame time with the optimised build (a 30 fps server tick is 33 ms):
+
 [list]
-[*]MaxObjectsPerFrame.MaxObjects can be increased to improve the loading times of areas on the server, at the expense of CPU usage.
+[*]35-39 ms with up to 7 players, outside fights
+[*]45-55 ms in fights
+[*]60-93 ms with 6-7 players running dungeons
+[/list]
+
+What the profiler showed:
+
+[list]
+[*][b]Creature count decides frame time.[/b] 116 simulated creatures gave 42 ms, 148 gave 49 ms, 177 gave 66 ms. On this CPU about 120 creatures is where the 33 ms budget runs out.
+[*][b]Dungeons pile up creatures.[/b] Each one spawns 20-40, and earlier dungeons&#39; creatures stay alive nearby. Six players running crypts reached about 170.
+[*][b]The object sweep was the biggest cost the mod controls.[/b] [font=monospace]ZNetScene.CreateDestroyObjects[/font] took 21% of busy time before optimisation and 9-13% after. Monster AI was under 3%, character physics 3-10%.
+[*][b]Under heavy load the rest is Unity.[/b] Most of the remaining time is physics and animation work the main thread waits for, which a mod can&#39;t reach.
+[/list]
+
+On similar hardware, expect it to be comfortable for about five players outside dungeons. Beyond that you hit the single-thread ceiling, not the mod. Setting [font=monospace]CreateDestroyIntervalMs = 100[/font] and leaving the profiler off is the suggested starting point; that combination hasn&#39;t been measured yet.
+
+[b][size=5]Valheim 1.0 fixes[/size][/b]
+
+Valheim 1.0 added code that assumes a local player exists wherever the game runs. On a dedicated server there isn&#39;t one, so this version fixes:
+
+[list]
+[*][b]Berry and item pickup[/b] ([font=monospace]Pickable.RPC_Pick[/font]): pickups showed +1 but gave nothing, with thousands of NullReferenceExceptions.
+[*][b]The same null-player problem[/b] in traps, containers, ship sails, saddles, sound effects, cooking stations, build-piece stats, ward access, the Leviathan and music volumes.
+[*][b]Unset server simulation distance:[/b] the server was simulating only the zone each player stood in, so monsters froze at zone borders and objects repeatedly loaded and unloaded at the edges. It&#39;s now pinned to classic ([font=monospace]ServerSimulationDistance[/font]).
 [/list]
 
 [b][size=5]Caveats[/size][/b]
@@ -43,6 +91,13 @@ Upgrading from Serverside Simulations: delete [font=monospace]Serverside_Simulat
 [*]Only runs on dedicated servers.
 [*]The mod dramatically increases server resource usage and running it on a weak CPU or limited RAM may lead to a poor gameplay experience.
 [*]The mod should be disabled when using the &quot;optterrain&quot; command.
+[*]Tree chopping and mining stats (and the achievements that use them) don&#39;t count. The game credits them to the player on whichever machine owns the object, which is now the server. Fixing this needs a client-side mod. Kill stats still work.
+[*]Some harmless messages show up in the server log because the server now owns objects clients normally own:
+[list]
+[*][font=monospace]Failed to find rpc method 327122920[/font] is Valheim&#39;s own &quot;discovered&quot; RPC name mismatch.
+[*][font=monospace]Double ZNetview when initializing object vfx_RockHit[/font] comes from the server creating a hit effect.
+[*][font=monospace]EndOfStreamException[/font] bursts in [font=monospace]Smelter.RPC_AddOre[/font] come from an out-of-date client-side kiln/smelter auto-feed mod on a player&#39;s PC.
+[/list]
 [*]This mod does not prevent cheating or any kind of client manipulation.
 [*]While this mod is quite light on complexity, as with most mods it&#39;s possible future Valheim patches will break the mod in unexpected ways. We recommend you back up your characters and worlds and/or consider disabling this mod anytime a new game patch is released.
 [/list]
