@@ -3,6 +3,8 @@ name: Build Plugin
 on:
   push:
     branches: [ main ]
+    # Pushing a version tag (e.g. v1.2.0) also runs the release job below.
+    tags: [ 'v*' ]
   workflow_dispatch:
 
 #  workflow_dispatch:
@@ -52,4 +54,55 @@ jobs:
     - uses: actions/upload-artifact@v4.6.2
       with:
         name: thunderstore-package-${{ github.sha }}.zip
-        path: thunderstore-package.zip 
+        path: thunderstore-package.zip
+
+  release:
+    # Publishes a GitHub release for a version tag, with the DLL and the
+    # Thunderstore package attached. Releases are created as pre-releases:
+    # test the build on a server, then untick "pre-release" on GitHub.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [build-dll, thunderstore-package]
+    permissions:
+      contents: write
+    steps:
+    - uses: actions/checkout@v5.0.0
+    - uses: actions/download-artifact@v5.0.0
+      with:
+        path: dist
+        merge-multiple: true
+    - name: Create release
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        VERSION="${GITHUB_REF_NAME#v}"
+
+        PLUGIN_VERSION=$(grep -oP '(?<=\[BepInPlugin\(PluginGuid, "Dedicated Simulation", ")\d+\.\d+\.\d+(?="\)\]\r?$)' src/Valheim_Serverside/ServersidePlugin.cs)
+        if [ "$VERSION" != "$PLUGIN_VERSION" ]; then
+          echo "Tag $GITHUB_REF_NAME does not match the plugin version $PLUGIN_VERSION in ServersidePlugin.cs"
+          exit 1
+        fi
+
+        ls -la dist
+        if ! unzip -l dist/thunderstore-package.zip | grep -q 'DedicatedSimulation.dll'; then
+          echo "DedicatedSimulation.dll is missing from the Thunderstore package"
+          exit 1
+        fi
+        mv dist/thunderstore-package.zip "dist/liekos47-DedicatedSimulation-$VERSION.zip"
+
+        # Release notes: this version's section of CHANGELOG.md
+        awk -v heading="## [$VERSION]" 'index($0, heading) == 1 { found = 1; next } found && /^## \[/ { exit } found { print }' CHANGELOG.md > notes.md
+        if [ ! -s notes.md ]; then
+          echo "No '## [$VERSION]' section in CHANGELOG.md"
+          exit 1
+        fi
+
+        gh release create "$GITHUB_REF_NAME" \
+          dist/DedicatedSimulation.dll \
+          "dist/liekos47-DedicatedSimulation-$VERSION.zip" \
+          --title "Dedicated Simulation $VERSION" \
+          --notes-file notes.md \
+          --prerelease \
+          --verify-tag

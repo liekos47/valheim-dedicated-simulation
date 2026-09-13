@@ -10,7 +10,7 @@ namespace Valheim_Serverside
 {
 
 	[Harmony]
-	[BepInPlugin(PluginGuid, "Dedicated Simulation", "1.1.9")]
+	[BepInPlugin(PluginGuid, "Dedicated Simulation", "1.2.0")]
 	[BepInDependency(ValheimPlusPluginId, BepInDependency.DependencyFlags.SoftDependency)]
 
 	public class ServersidePlugin : BaseUnityPlugin
