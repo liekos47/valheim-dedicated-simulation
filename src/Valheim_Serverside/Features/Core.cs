@@ -1,5 +1,6 @@
 using FeaturesLib;
 using HarmonyLib;
+using PluginConfiguration;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -57,22 +58,60 @@ namespace Valheim_Serverside.Features
 						   frame number.
 		*/
 		{
+			// This runs every frame, so it allocates nothing: the collections are reused, and the
+			// game's private methods are called directly (the assembly is publicised) instead of
+			// through Traverse, which did a reflective lookup and invoke each frame.
+			static readonly HashSet<Vector2s> s_zones = new HashSet<Vector2s>();
+			static readonly HashSet<ZDO> s_nearSet = new HashSet<ZDO>();
+			static readonly HashSet<ZDO> s_distantSet = new HashSet<ZDO>();
+			static readonly List<ZDO> s_scratchNear = new List<ZDO>();
+			static readonly List<ZDO> s_scratchDistant = new List<ZDO>();
+			static readonly List<ZDO> s_near = new List<ZDO>();
+			static readonly List<ZDO> s_distant = new List<ZDO>();
+			static float s_lastRun = -1f;
+
 			private static bool Prefix(ZNetScene __instance)
 			{
-				List<ZDO> m_tempCurrentObjects = new List<ZDO>();
-				List<ZDO> m_tempCurrentDistantObjects = new List<ZDO>();
+				int intervalMs = Configuration.createDestroyIntervalMs.Value;
+				if (intervalMs > 0 && s_lastRun >= 0f && (Time.realtimeSinceStartup - s_lastRun) * 1000f < intervalMs)
+				{
+					return false;
+				}
+				s_lastRun = Time.realtimeSinceStartup;
+
+				// One sector scan per distinct zone, not per player: clustered players share it.
+				// Valheim 1.0 replaced the m_activeArea/m_activeDistantArea int pair with a
+				// SimulationDistance carrying both, and zones are Vector2s instead of Vector2i.
+				s_zones.Clear();
+				s_nearSet.Clear();
+				s_distantSet.Clear();
+				SimulationDistance distance = ZoneSystem.instance.m_simulationDistance;
 				foreach (ZNetPeer znetPeer in ZNet.instance.GetConnectedPeers())
 				{
 					Vector2s zone = ZoneSystem.GetZone(znetPeer.GetRefPos());
-					// Valheim 1.0 replaced the m_activeArea/m_activeDistantArea int pair with a
-					// SimulationDistance carrying both, and zones are Vector2s instead of Vector2i.
-					ZDOMan.instance.FindSectorObjects(zone, ZoneSystem.instance.m_simulationDistance, m_tempCurrentObjects, m_tempCurrentDistantObjects);
+					if (!s_zones.Add(zone))
+					{
+						continue;
+					}
+					s_scratchNear.Clear();
+					s_scratchDistant.Clear();
+					ZDOMan.instance.FindSectorObjects(zone, distance, s_scratchNear, s_scratchDistant);
+					s_nearSet.UnionWith(s_scratchNear);
+					s_distantSet.UnionWith(s_scratchDistant);
 				}
 
-				m_tempCurrentDistantObjects = m_tempCurrentDistantObjects.Distinct().ToList();
-				m_tempCurrentObjects = m_tempCurrentObjects.Distinct().ToList();
-				Traverse.Create(__instance).Method("CreateObjects", m_tempCurrentObjects, m_tempCurrentDistantObjects).GetValue();
-				Traverse.Create(__instance).Method("RemoveObjects", m_tempCurrentObjects, m_tempCurrentDistantObjects).GetValue();
+				s_near.Clear();
+				s_near.AddRange(s_nearSet);
+				s_distant.Clear();
+				if (!Configuration.skipDistantObjects.Value)
+				{
+					// The far ring exists so clients can see distant objects. The server has no
+					// eyes; with SkipDistantObjects it keeps only the ZDOs and instantiates nothing.
+					s_distant.AddRange(s_distantSet);
+				}
+
+				__instance.CreateObjects(s_near, s_distant);
+				__instance.RemoveObjects(s_near, s_distant);
 				return false;
 			}
 		}
@@ -117,6 +156,8 @@ namespace Valheim_Serverside.Features
 						only to send associated information to clients.
 		*/
 		{
+			static readonly HashSet<Vector2s> s_zones = new HashSet<Vector2s>();
+
 			static bool Prefix(ZoneSystem __instance, ref float ___m_updateTimer)
 			{
 				if (ZNet.GetConnectionStatus() != ZNet.ConnectionStatus.Connected)
@@ -129,15 +170,19 @@ namespace Valheim_Serverside.Features
 				{
 					___m_updateTimer = 0f;
 					// original flag line removed, as well as the check for it as it always returns `false` on the server.
-					//bool flag = Traverse.Create(__instance).Method("CreateLocalZones", ZNet.instance.GetReferencePosition()).GetValue<bool>();
-					Traverse.Create(__instance).Method("UpdateTTL", 0.1f).GetValue();
-					if (ZNet.instance.IsServer()) // && !flag)
+					__instance.UpdateTTL(0.1f);
+					if (ZNet.instance.IsServer())
 					{
-						//Traverse.Create(__instance).Method("CreateGhostZones", ZNet.instance.GetReferencePosition()).GetValue();
-						//UnityEngine.Debug.Log(String.Concat(new object[] { "CreateLocalZones for", refPoint.x, " ", refPoint.y, " ", refPoint.z }));
+						// CreateLocalZones depends only on the zone of the position given, so peers
+						// standing in the same zone are served by one call.
+						s_zones.Clear();
 						foreach (ZNetPeer znetPeer in ZNet.instance.GetPeers())
 						{
-							Traverse.Create(__instance).Method("CreateLocalZones", znetPeer.GetRefPos()).GetValue();
+							Vector3 refPos = znetPeer.GetRefPos();
+							if (s_zones.Add(ZoneSystem.GetZone(refPos)))
+							{
+								__instance.CreateLocalZones(refPos);
+							}
 						}
 					}
 				}
@@ -155,10 +200,13 @@ namespace Valheim_Serverside.Features
 			If ZDO is no longer near the peer, release ownership. If no owner set, change ownership to said peer.
 		*/
 		{
+			// Peer zones are computed once per sweep, not once per ZDO per peer.
+			static readonly List<Vector2s> s_peerZones = new List<Vector2s>();
+
 			static bool Prefix(ZDOMan __instance, ref Vector3 refPosition, ref long uid)
 			{
 				Vector2s zone = ZoneSystem.GetZone(refPosition);
-				List<ZDO> m_tempNearObjects = Traverse.Create(__instance).Field("m_tempNearObjects").GetValue<List<ZDO>>();
+				List<ZDO> m_tempNearObjects = __instance.m_tempNearObjects;
 				m_tempNearObjects.Clear();
 
 				// Near objects only, so a SimulationDistance with the far distance zeroed - the
@@ -166,38 +214,42 @@ namespace Valheim_Serverside.Features
 				SimulationDistance simulationDistance = ZoneSystem.instance.m_simulationDistance;
 				SimulationDistance nearOnly = new SimulationDistance(simulationDistance.NearSimulationDistance, 0, simulationDistance.IsClassic);
 				__instance.FindSectorObjects(zone, nearOnly, m_tempNearObjects, null);
+
+				s_peerZones.Clear();
+				foreach (ZNetPeer peer in ZNet.instance.GetPeers())
+				{
+					s_peerZones.Add(ZoneSystem.GetZone(peer.GetRefPos()));
+				}
+
+				long serverUid = ZNet.GetUID();
 				foreach (ZDO zdo in m_tempNearObjects)
 				{
-					if (zdo.Persistent)
+					if (!zdo.Persistent)
 					{
-						bool anyPlayerInArea = false;
-						foreach (ZNetPeer peer in ZNet.instance.GetPeers())
+						continue;
+					}
+					// 1.0's area checks take a world position, not a sector.
+					Vector3 zdoPos = ZoneSystem.GetZonePos(zdo.GetSector());
+					bool anyPlayerInArea = false;
+					for (int i = 0; i < s_peerZones.Count; i++)
+					{
+						if (ZNetScene.InActiveArea(zdoPos, s_peerZones[i]))
 						{
-							if (ZNetScene.InActiveArea(ZoneSystem.GetZonePos(zdo.GetSector()), ZoneSystem.GetZone(peer.GetRefPos())))
-							{
-								anyPlayerInArea = true;
-								break;
-							}
+							anyPlayerInArea = true;
+							break;
 						}
-						long zdoOwner = zdo.GetOwner();
-						if (zdoOwner == uid || zdoOwner == ZNet.GetUID())
+					}
+					long zdoOwner = zdo.GetOwner();
+					if (zdoOwner == uid || zdoOwner == serverUid)
+					{
+						if (!anyPlayerInArea)
 						{
-							if (!anyPlayerInArea)
-							{
-								zdo.SetOwner(0L);
-							}
+							zdo.SetOwner(0L);
 						}
-						else if (
-							(zdoOwner == 0L
-							// 1.0 takes a world position here, not a sector; Traverse matches on argument
-							// types, so passing a Vector2s would fail to find the method at runtime.
-							|| !new Traverse(__instance).Method("IsInPeerActiveArea", new object[] { ZoneSystem.GetZonePos(zdo.GetSector()), zdo.GetOwner() }).GetValue<bool>()
-							)
-							&& anyPlayerInArea
-						)
-						{
-							zdo.SetOwner(ZNet.GetUID());
-						}
+					}
+					else if ((zdoOwner == 0L || !__instance.IsInPeerActiveArea(zdoPos, zdoOwner)) && anyPlayerInArea)
+					{
+						zdo.SetOwner(serverUid);
 					}
 				}
 				return false;
@@ -300,22 +352,20 @@ namespace Valheim_Serverside.Features
 			Return spawners if there are nearby players in the event area.
 		*/
 		{
-			if (Traverse.Create(instance).Field("m_activeEvent").GetValue<RandomEvent>() == null)
+			if (instance.m_activeEvent == null)
 			{
 				return null;
 			}
 
-			ZNetView spawnSystem_m_nview = Traverse.Create(spawnSystem).Field("m_nview").GetValue<ZNetView>();
-			RandomEvent randomEvent = Traverse.Create(instance).Field("m_randomEvent").GetValue<RandomEvent>();
+			Vector3 spawnerPos = ZoneSystem.GetZonePos(spawnSystem.m_nview.GetZDO().GetSector());
+			RandomEvent randomEvent = instance.m_randomEvent;
 
 			foreach (Player player in Player.GetAllPlayers())
 			{
-				if (ZNetScene.InActiveArea(ZoneSystem.GetZonePos(spawnSystem_m_nview.GetZDO().GetSector()), player.transform.position))
+				Vector3 playerPos = player.transform.position;
+				if (ZNetScene.InActiveArea(spawnerPos, playerPos) && instance.IsInsideRandomEventArea(randomEvent, playerPos))
 				{
-					if (Traverse.Create(instance).Method("IsInsideRandomEventArea", new Type[] { typeof(RandomEvent), typeof(Vector3) }, new object[] { randomEvent, player.transform.position }).GetValue<bool>())
-					{
-						return instance.GetCurrentSpawners();
-					}
+					return instance.GetCurrentSpawners();
 				}
 			}
 			return null;
