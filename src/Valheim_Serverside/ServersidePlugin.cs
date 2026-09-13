@@ -50,6 +50,7 @@ namespace Valheim_Serverside
 			AvailableFeatures availableFeatures = new AvailableFeatures();
 			availableFeatures.AddFeature(new Features.Core());
 			availableFeatures.AddFeature(new Features.DedicatedServerFixes());
+			availableFeatures.AddFeature(new Features.ServerSimulationDistance());
 			availableFeatures.AddFeature(new Features.MaxObjectsPerFrame());
 			availableFeatures.AddFeature(new Features.Debugging());
 			availableFeatures.AddFeature(new Features.Compat_ValheimPlus());
