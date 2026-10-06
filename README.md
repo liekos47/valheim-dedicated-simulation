@@ -1,5 +1,7 @@
 # Dedicated Simulation
 
+[![Support me on Ko-fi](https://img.shields.io/badge/Ko--fi-Support%20the%20mod-FF5E5B?logo=ko-fi&logoColor=white)](https://ko-fi.com/liekos47)
+
 Dedicated Simulation continues [Serverside Simulations](https://github.com/ddormer/valheim-serverside) by ddormer and contributors, which is no longer maintained, and is updated for current versions of Valheim.
 
 **Why the new name?** The owner of the original repository asked that anyone releasing their own version of the mod use a different name. As requested, this version has been renamed from Serverside Simulations to Dedicated Simulation. It is not affiliated with or endorsed by the original authors, and any issues should be reported [here](https://github.com/liekos47/valheim-dedicated-simulation/issues), not on the original repository.
